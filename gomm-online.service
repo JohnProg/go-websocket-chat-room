@@ -1,0 +1,91 @@
+#!/bin/sh
+#
+# go_chat_room init.d file for starting up go_chat_room daemon
+#
+# chkconfig:   - 20 80
+# this script will copy to /etc/init.d/go_chat_room
+# description: Starts and stops the go_chat_room daemon.
+
+# Source function library.
+. /etc/rc.d/init.d/functions
+
+APP_NAME="go_chat_room"
+BASEDIR=/opt/apps/web/go_chat_room
+
+# import the config or the $HOST_PORT and $DOMAIN
+# default HOST_PORT='0.0.0.0:10086'
+source $BASEDIR/config
+
+PIDS=`ps -ef|grep $APP_NAME | grep -v grep | grep -v $0 | awk '{print $2}'`
+
+start() {
+    [ -d $BASEDIR ] || exit 6
+    cd $BASEDIR
+	nohup go run "src/$APP_NAME-main.go" 2>&1 > /dev/null &
+	
+    retval=$?
+	if [ $retval -eq 0 ]; then
+		echo -n $"Starting $APP_NAME and listen $HOST_PORT."
+	else
+		echo -n $"Starting $APP_NAME fail."
+	fi
+	echo
+    return $retval
+}
+
+stop() {
+    echo -n $"Stopping $APP_NAME, send kill to PID:[$PIDS]"
+    kill $PIDS
+    retval=$?
+    echo
+    return $retval
+}
+
+restart() {
+    echo -n $"restarting $APP_NAME."
+	stop
+	start
+}
+
+reload() {
+    false
+}
+
+rh_status() {
+    if [ -n "$PIDS" ]; then
+        echo $"$APP_NAME: is Running. pid is $PIDS"
+        return 0
+    else 
+        echo $"$APP_NAME: is Stoped."
+        return 3
+    fi
+}
+
+rh_status_q() {
+    rh_status
+}
+
+case "$1" in
+    start)
+        rh_status_q && exit 0 
+        $1
+        ;;
+    stop)
+        rh_status_q || exit 0
+        $1
+        ;;
+    status)
+        rh_status
+        ;;
+    restart)
+        $1
+        ;;
+    reload)
+        rh_status_q || exit 7
+        $1
+        ;;
+    *)
+        echo $"Usage: $0 {start|stop|status|restart}"
+        exit 2
+esac
+exit $?

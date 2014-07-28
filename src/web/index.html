@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>WebSocket Chart Room </title>
+<meta charset="utf-8">
+<meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link href="//netdna.bootstrapcdn.com/bootstrap/3.1.1/css/bootstrap.min.css" rel="stylesheet">
+<style>
+body { padding-top: 20px; background-color: #333; color: #fff; }
+#chat { width: 100%%; height: 300px;  color: #333; }
+</style>
+
+<script type="application/javascript" src="http://code.jquery.com/jquery-2.1.0.min.js"></script>
+<script type="application/javascript" src="//netdna.bootstrapcdn.com/bootstrap/3.1.1/js/bootstrap.min.js"></script>
+<script type="application/javascript">
+$(document).ready(function() {
+    function _log(msg){
+       $("#chat").val($("#chat").val() + "\n" + msg);
+    }
+
+    Msg_Type_Sys_Ok     = 0x00001000
+    Msg_Type_Sys_Err    = 0x00001001
+    Msg_Type_Sys_Conn   = 0x00001002    //当连接建立后，客户端收到的第一个消息类型。
+
+    // 用户级消息
+    Msg_Type_User_Join  = 0x00010000
+    Msg_Type_User_Quit  = 0x00010001
+    Msg_Type_User_Chat  = 0x00010002  // 注意: 同是chat消息，上传与下行格式不一样
+    Msg_Type_User_Name  = 0x00010003  // user set him nickname, will broadcast to the room
+    Msg_Type_User_List  = 0x00010004  // list All user in the room.
+
+
+    // 文本编辑消息
+    Msg_Type_Text_Init   = 0x00100000
+    Msg_Type_Text_Update = 0x00100001
+    Msg_Type_Text_CurPos = 0x00100002
+    Msg_Type_Text_GetAll = 0x00100003
+
+    function _pack_say(username, msg){
+       // TODO: add websocket-connection-request-uuid
+       return JSON.stringify({type:Msg_Type_User_Chat, content: msg})
+    }
+
+    function ConnectWS() {
+        _log("try to connect " + $("#wsUri").val())
+        var ws = new WebSocket($("#wsUri").val());
+
+        window.onbeforeunload = function(e) {
+            _log("Bye bye...");
+            ws.close(1000, $("#username").val() + " left the room");
+
+            if(!e) e = window.event;
+            e.stopPropagation();
+            e.preventDefault();
+        };
+        ws.onmessage = function (evt) {
+            _log( evt.data);
+        };
+        ws.onopen = function() {
+            ws.send(_pack_say($("#username").val(),  " entered the room."));
+        };
+        ws.onclose = function(evt) {
+            _log("Connection closed by server: " + evt.code + " \'" + evt.reason + "\'\n");
+        };
+
+        $("#send").click(function() {
+            ret = ws.send(_pack_say($("#username").val(), $("#message").val()));
+//            console.log($("#message").val(), ret);
+            $("#message").val("");
+            return false;
+        });
+    }
+    var userId = parseInt(100*Math.random())
+    function initUI(){
+      
+      $("#wsUri").val("ws://mm.wps.cn/comet?room=qing&userid=" + userId);
+      $("#username").val("user-" + userId);
+      $("#connect").click(ConnectWS);
+//#   $("#connect").disable();
+   }
+   initUI();
+});
+</script>
+</head>
+<body>
+    <div class="container">
+
+    <div class="row">
+         <strong>WebSocket Location:</strong>
+           <input class="form-control input-sm" type="text" id="wsUri" size="35"/>
+         <br>
+         <strong>username:</strong>
+           <input class="form-control input-sm" type="text" id="username" size="35"/>
+         <strong>Room ID: qing</strong>
+         <br>
+         <button id="connect" class="btn btn-default btn-sm">Connect</button>
+         <button id="disconnect" class="btn btn-default btn-sm">Disconnect</button>
+         <br>
+    </div>
+    <br>
+
+    <div class="row">
+        <textarea id="chat" readonly="readonly"></textarea>
+    </div>
+
+<div class="row">
+<form action="#" id="chatform" method="get" class="form-horizontal" role="form">
+<div class="form-group">
+<div class="col-sm-4">
+<input class="form-control input-sm" type="text" id="message" />
+</div>
+<div class="col-sm-1">
+<button id="send" type="submit" class="btn btn-default btn-sm">Send</button>
+</div>
+</div>
+</form>
+</div>
+</div>
+</body>
+</html>
