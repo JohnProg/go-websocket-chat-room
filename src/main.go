@@ -3,63 +3,65 @@
 package main
 
 import (
-	"io"
     "time"
-    "strconv"
+    "flag"
+    "strings"
+    "math/rand"
     "net/http"
-    "libs/websocket"
     "libs/log"
     "room"
 )
 
 const (
-    HOST_PORT = ":10086"
+    HOST_PORT = "127.0.0.1:80"
 )
 
-var _info = log.Info
-var _err = log.Error
-
-func websocketHandle(w http.ResponseWriter, r *http.Request) {
-    sessionId := time.Now().UnixNano()
-
-    roomId := r.URL.Query().Get("room")
-    userId, err := strconv.ParseInt(r.URL.Query().Get("userid"), 10, 0)
-
-    if "" == roomId || err != nil {
-        log.Debug("no room id.")
-        io.WriteString(w, "pls used wss://0.0.0.0.0/comet?room=xxx&userid=[int32] to connect.")
-        return
-    }
-
-    conn, err := websocket.Upgrade(w, r, nil)
-    if err != nil {
-        _err(err.Error())
-        return
-    }
-    _info("new websocket connect. userId=%v", userId)
-
-    user := room.User {
-        SessionId: sessionId,
-        Name: "name+"+ strconv.FormatInt(userId, 10),
-    }
-
-    onlineUser := room.OnlineUser {
-        User: user,
-        WebSocket: conn,
-        Inbox: make(chan room.Message, 16),
-    }
-
-    room.JoinRoom(roomId, &onlineUser)
-    go onlineUser.WaitForRoomMsg()
-    onlineUser.WaitForFrame()
-    _info("end session[%v]", sessionId)
-}
+var host_port *string = flag.String("h", HOST_PORT, "host:port for HTTP service Listen to.")
+var level *string = flag.String("l", "[debug|info|warn|error]", "log level")
 
 func main(){
-    log.SetLevel(log.LevelDebug)
-    http.HandleFunc("/comet",  websocketHandle)
-    err := http.ListenAndServe(HOST_PORT, nil)
-    if err != nil {
-        _err("ListenAndServe[%v], err=[%v]", HOST_PORT, err.Error())
+    flag.Parse()
+	if *host_port == ""{
+	    *host_port = HOST_PORT 
+	}
+
+	var default_level = log.LevelInfo
+
+	*level = strings.ToLower(*level)
+	
+	if strings.HasPrefix(*level, "info"){
+	    default_level = log.LevelInfo
+	} else if strings.HasPrefix(*level, "warn"){
+	    default_level = log.LevelWarn
+	} else if strings.HasPrefix(*level, "err"){
+	    default_level = log.LevelError
+	} else if strings.HasPrefix(*level, "debug"){
+	    default_level = log.LevelDebug
+	}else{
+	 	default_level = log.LevelInfo
+	}
+
+    rand.Seed(time.Now().UnixNano())
+
+    log.SetLevel(default_level)
+    http.HandleFunc("/comet",  room.WebsocketHandler)
+    http.HandleFunc("/status",  room.StatusHandler)
+    http.HandleFunc("/api/rooms/status",  room.RoomStatusHandler)
+
+	log.Info("Server Listen to: %v", *host_port)
+    svr :=&http.Server{
+        Addr:           *host_port,
+        Handler:        nil,
+        ReadTimeout:    0 * time.Second,
+        WriteTimeout:   0 * time.Second,
+        MaxHeaderBytes: 1 << 20,
     }
+
+    err := svr.ListenAndServe()
+
+    if err != nil {
+        log.Error("ListenAndServe[%v], err=[%v]", HOST_PORT, err.Error())
+    }
+    
 }
+
