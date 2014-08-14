@@ -94,33 +94,6 @@ func (this *OnlineUser) saveTextMsg() *Message {
 	return this.smapleMsg(Msg_Type_Text_Save, "")
 }
 
-func (this *OnlineUser) WaitForRoomMsg() {
-	// 发送消息到用户websocket
-	log.Info("User[%v] Wait For Room Msg", this.Name)
-	for {
-		select {
-		case msg := <-this.Inbox:
-			log.Info("User[%v] get msg[%v] from Inbox, content=%v, index=%v", this.Name, msg.TypeS(), msg.Content, msg.Index)
-
-			switch msg.Type {
-			case Msg_Type_User_Quit:
-				if msg.Sender == this {
-					log.Info("User[%v] quit Room[%v]. end loop[WaitForRoomMsg]", this.Name, this.Room.Id)
-					return
-				} else {
-					log.Info("User[%v], Other quit Room[%v].", this.Name, this.Room.Id)
-					this.WebSocket.Write([]byte(jsonString(msg)), false)
-				}
-			case Msg_Type_User_Chat:
-				this.WebSocket.Write([]byte(jsonString(msg)), false)
-			default:
-				log.Info("User[%v] WaitForRoomMsg_case_default: json->%v", this.Name, jsonString(msg))
-				this.WebSocket.Write([]byte(jsonString(msg)), false)
-			}
-		}
-	}
-}
-
 func (user *OnlineUser) respMsgOk(msg *Message, content string) {
 	//收到用户Chat消息后，返回一个OK，保持index一致
 	msg.Type = Msg_Type_Sys_Ok
@@ -248,13 +221,38 @@ func (this *OnlineUser) WaitForFrame() {
 	}
 }
 
+func (this *OnlineUser) WaitForRoomMsg() {
+	// 发送消息到用户websocket
+	log.Info("User[%v] Wait For Room Msg", this.Name)
+	for {
+		select {
+		case msg := <-this.Inbox:
+			log.Info("User[%v] get msg[%v] from Inbox, content=%v, index=%v", this.Name, msg.TypeS(), msg.Content, msg.Index)
+
+			switch msg.Type {
+			case Msg_Type_User_Quit:
+				if msg.Sender == this {
+					log.Info("User[%v] quit Room[%v]. end loop[WaitForRoomMsg]", this.Name, this.Room.Id)
+					return
+				} else {
+					log.Info("User[%v], Other quit Room[%v].", this.Name, this.Room.Id)
+					this.WebSocket.Write([]byte(jsonString(msg)), false)
+				}
+			default:
+				log.Debug("User[%v] write frame to socket: json->%v", this.Name, jsonString(msg))
+				this.WebSocket.Write([]byte(jsonString(msg)), false)
+			}
+		}
+	}
+}
+
 func (this *OnlineUser) quit() {
 	this.WebSocket.Close()
 	this.Room.RW.Lock()
 	defer this.Room.RW.Unlock()
 	delete(this.Room.OnlineUsers, this.Session.Id)
 
-	msgQuit := Message{
+	msgQuit := &Message{
 		BaseFrameMsg: BaseFrameMsg{
 			Index:   this.Room.GenMsgIndex(),
 			Type:    Msg_Type_User_Quit,
@@ -264,6 +262,7 @@ func (this *OnlineUser) quit() {
 		SendTo: nil,
 	}
 	// 因user已从OnlineUsers中delete掉，所以不会广播到他自己的Inbox
-	this.Room.Broadcast <- &msgQuit
+	this.Room.Broadcast <- msgQuit
+	this.Inbox <- msgQuit 
 	log.Info("User=[%v] Quit Room[%v],send quit Msg to peoples=[%v].", this.Name, this.Room.Id, len(this.Room.OnlineUsers))
 }
